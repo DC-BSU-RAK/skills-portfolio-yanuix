@@ -1,0 +1,381 @@
+import tkinter as tk
+from tkinter import messagebox
+from pathlib import Path
+import random
+
+APP_TITLE = "Alexa Joke Teller"
+
+
+class JokeApp:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title(APP_TITLE)
+        self.root.geometry("720x540")
+        self.root.minsize(690, 500)
+
+        # Color palette tuned for a dark, neon-ish interface
+        self.bg_outer = "#020617"        # full window background
+        self.top_bar = "#05001f"         # top bar behind title
+        self.cyan = "#00eaff"            # main accent color
+        self.cyan_hover = "#6ffaff"      # lighter accent for hover
+        self.card_bg = "#0b1120"         # main card background
+        self.card_border = "#111827"     # darker border to frame the card
+        self.card_shadow = "#020c1f"     # fake shadow behind the card
+        self.inner_card = "#003b91"      # area where the joke text lives
+        self.inner_border = "#00285f"    # border for the inner card
+        self.text_primary = "#ffffff"
+        self.text_muted = "#9da3b0"
+
+        # Fonts kept consistent and simple
+        self.heading_font = ("Segoe UI Semibold", 22)
+        self.normal_font = ("Segoe UI", 11)
+        self.bold_font = ("Segoe UI Semibold", 11)
+        self.button_font = ("Segoe UI Semibold", 10)
+
+        self.root.configure(bg=self.bg_outer)
+
+        # Base paths so the jokes file can live either beside the script or in /resources
+        self.base = Path(__file__).parent
+        self.resources = self.base / "resources"
+
+        # Load jokes once when the app starts
+        self.jokes = self._load_jokes()
+        self.current = None
+
+        # Build the complete interface
+        self._build_ui()
+
+    # --------------------------------------------------
+    # File handling
+    # --------------------------------------------------
+    def _load_jokes(self):
+        """
+        Try a few common locations for the jokes file.
+        This makes the program less fragile if the folder structure changes a bit.
+        """
+        candidates = [
+            self.resources / "random jokes.txt",
+            self.base / "random jokes.txt",
+            self.resources / "randomJokes.txt",
+            self.base / "randomJokes.txt",
+        ]
+
+        for path in candidates:
+            if path.exists():
+                try:
+                    with path.open("r", encoding="utf-8") as f:
+                        # Remove any empty lines so we don't get blank "jokes"
+                        return [ln.strip() for ln in f if ln.strip()]
+                except Exception as e:
+                    messagebox.showerror("Read Error", f"Error reading jokes:\n{e}")
+                    return []
+
+        # If nothing was found, we warn the user once and return an empty list
+        messagebox.showwarning(
+            "Missing File",
+            "Could not find 'random jokes.txt'."
+        )
+        return []
+
+    # --------------------------------------------------
+    # UI construction
+    # --------------------------------------------------
+    def _build_ui(self):
+        # Top navigation bar with app title and a quit button
+        top_bar = tk.Frame(self.root, bg=self.top_bar, height=55)
+        top_bar.pack(side="top", fill="x")
+
+        title_lbl = tk.Label(
+            top_bar,
+            text=APP_TITLE,
+            font=("Segoe UI Semibold", 14),
+            bg=self.top_bar,
+            fg=self.cyan
+        )
+        title_lbl.pack(side="left", padx=24, pady=10)
+
+        quit_btn = tk.Button(
+            top_bar,
+            text="Quit",
+            command=self.root.quit,
+            font=self.button_font,
+            bg=self.cyan,
+            fg="#001219",
+            activeforeground="#001219",
+            relief="flat",
+            bd=0,
+            padx=18,
+            pady=4,
+            cursor="hand2"
+        )
+        quit_btn.pack(side="right", padx=24, pady=10)
+        # Simple hover effect for the quit button
+        self._add_hover_effect(
+            quit_btn,
+            normal_bg=self.cyan,
+            hover_bg=self.cyan_hover,
+            normal_fg="#001219",
+            hover_fg="#001219"
+        )
+
+        # Fake drop shadow behind the main card (slightly offset frame)
+        shadow = tk.Frame(
+            self.root,
+            bg=self.card_shadow,
+            highlightthickness=0,
+            bd=0
+        )
+        shadow.place(relx=0.505, rely=0.56, anchor="center", relwidth=0.86, relheight=0.82)
+
+        # Main card that holds the content; shadow sits behind this
+        container = tk.Frame(
+            self.root,
+            bg=self.card_bg,
+            highlightbackground=self.card_border,
+            highlightthickness=3,
+            bd=0
+        )
+        container.place(relx=0.5, rely=0.55, anchor="center", relwidth=0.86, relheight=0.82)
+
+        # Page heading
+        heading = tk.Label(
+            container,
+            text="Experience the comfort of laughter.",
+            font=self.heading_font,
+            bg=self.card_bg,
+            fg=self.text_primary,
+            justify="center"
+        )
+        heading.pack(pady=(18, 6))
+
+        # Short description under the heading
+        subheading = tk.Label(
+            container,
+            text="Click the button below and let Alexa surprise you with a random joke.",
+            font=self.normal_font,
+            bg=self.card_bg,
+            fg=self.text_muted,
+            wraplength=520,
+            justify="center"
+        )
+        subheading.pack(pady=(0, 22))
+
+        # Row of controls: Tell Joke, Show Punchline, Next Joke
+        btn_row = tk.Frame(container, bg=self.card_bg)
+        btn_row.pack(pady=(0, 18))
+
+        # Main “Alexa tell me a Joke” button
+        self.tell_btn = tk.Button(
+            btn_row,
+            text="Alexa tell me a Joke",
+            command=self.tell_joke,
+            font=self.button_font,
+            bg=self.cyan,
+            fg="#001219",
+            relief="flat",
+            bd=0,
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        self.tell_btn.grid(row=0, column=0, padx=10)
+        self._add_hover_effect(
+            self.tell_btn,
+            normal_bg=self.cyan,
+            hover_bg=self.cyan_hover,
+            normal_fg="#001219",
+            hover_fg="#001219"
+        )
+
+        # Button that reveals the punchline
+        self.punch_btn = tk.Button(
+            btn_row,
+            text="Show Punchline",
+            command=self.show_punchline,
+            state="disabled",
+            font=self.button_font,
+            bg=self.card_bg,
+            fg=self.cyan,
+            activeforeground=self.cyan,
+            relief="solid",
+            bd=2,
+            padx=20,
+            pady=8,
+            cursor="hand2",
+            highlightbackground=self.cyan
+        )
+        self.punch_btn.grid(row=0, column=1, padx=10)
+        self._add_hover_effect(
+            self.punch_btn,
+            normal_bg=self.card_bg,
+            hover_bg="#020821",
+            normal_fg=self.cyan,
+            hover_fg=self.cyan
+        )
+
+        # Button to immediately move on to another joke
+        self.next_btn = tk.Button(
+            btn_row,
+            text="Next Joke",
+            command=self.next_joke,
+            font=self.button_font,
+            bg=self.card_bg,
+            fg=self.cyan,
+            activeforeground=self.cyan,
+            relief="solid",
+            bd=2,
+            padx=20,
+            pady=8,
+            cursor="hand2",
+            highlightbackground=self.cyan
+        )
+        self.next_btn.grid(row=0, column=2, padx=10)
+        self._add_hover_effect(
+            self.next_btn,
+            normal_bg=self.card_bg,
+            hover_bg="#020821",
+            normal_fg=self.cyan,
+            hover_fg=self.cyan
+        )
+
+        # Inner card that holds the actual joke text
+        joke_card = tk.Frame(
+            container,
+            bg=self.inner_card,
+            highlightbackground=self.inner_border,
+            highlightthickness=3,
+            bd=0
+        )
+        joke_card.pack(padx=26, pady=10, fill="both", expand=True)
+
+        # Setup title
+        setup_title = tk.Label(
+            joke_card,
+            text="Setup",
+            font=self.bold_font,
+            bg=self.inner_card,
+            fg="#e0f2fe",
+            anchor="w"
+        )
+        setup_title.pack(anchor="w", padx=16, pady=(10, 2))
+
+        # Setup text area
+        self.setup_box = tk.Label(
+            joke_card,
+            text="Press “Alexa tell me a Joke” to get started.",
+            font=self.normal_font,
+            bg=self.inner_card,
+            fg=self.text_primary,
+            wraplength=620,
+            justify="center",
+            padx=18,
+            pady=8
+        )
+        self.setup_box.pack(fill="x", padx=10, pady=(0, 8))
+
+        # A simple line between setup and punchline
+        divider = tk.Frame(joke_card, bg=self.inner_border, height=2)
+        divider.pack(fill="x", padx=16, pady=(4, 6))
+
+        # Punchline title
+        punch_title = tk.Label(
+            joke_card,
+            text="Punchline",
+            font=self.bold_font,
+            bg=self.inner_card,
+            fg="#e0f2fe",
+            anchor="w"
+        )
+        punch_title.pack(anchor="w", padx=16, pady=(6, 2))
+
+        # Punchline text area
+        self.punch_box = tk.Label(
+            joke_card,
+            text="—",
+            font=("Segoe UI Italic", 11),
+            bg=self.inner_card,
+            fg="#dbeafe",
+            wraplength=620,
+            justify="center",
+            padx=18,
+            pady=8
+        )
+        self.punch_box.pack(fill="x", padx=10, pady=(0, 12))
+
+    # --------------------------------------------------
+    # Small helper for hover effects on buttons
+    # --------------------------------------------------
+    def _add_hover_effect(self, widget, normal_bg, hover_bg, normal_fg, hover_fg):
+        """Attach simple hover behaviour to a button."""
+        def on_enter(_event):
+            widget.configure(bg=hover_bg, fg=hover_fg)
+
+        def on_leave(_event):
+            widget.configure(bg=normal_bg, fg=normal_fg)
+
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
+
+    # --------------------------------------------------
+    # Button behaviour
+    # --------------------------------------------------
+    def _pick_random_joke(self):
+        """Select one random joke from the loaded list."""
+        if not self.jokes:
+            self.current = None
+            return
+        self.current = random.choice(self.jokes)
+
+    def tell_joke(self):
+        """
+        When the user asks Alexa for a joke:
+        - pick a random one
+        - show only the setup
+        - keep the punchline hidden for now
+        """
+        self._pick_random_joke()
+        if not self.current:
+            self.setup_box.config(text="No jokes found in random jokes.txt.")
+            self.punch_box.config(text="—")
+            self.punch_btn.config(state="disabled")
+            return
+
+        setup, _ = self._split_joke(self.current)
+        self.setup_box.config(text=setup)
+        self.punch_box.config(text="Press “Show Punchline” to reveal the ending.")
+        self.punch_btn.config(state="normal")
+
+    def show_punchline(self):
+        """Reveal the punchline for the currently selected joke."""
+        if not self.current:
+            messagebox.showinfo("No Joke", "Click “Alexa tell me a Joke” first.")
+            return
+        _, punch = self._split_joke(self.current)
+        self.punch_box.config(text=punch)
+
+    def next_joke(self):
+        """Shortcut for moving directly to another random joke."""
+        self.tell_joke()
+
+    @staticmethod
+    def _split_joke(line: str):
+        """
+        Split a line into setup and punchline.
+        The format in the file is expected to be: setup?punchline
+        Only the first question mark is treated as the split point.
+        """
+        parts = line.split('?', 1)
+        if len(parts) == 2:
+            return parts[0].strip() + "?", parts[1].strip()
+        # Fallback if a line doesn't follow the expected pattern
+        return line.strip(), "(no punchline found)"
+
+
+def main():
+    root = tk.Tk()
+    JokeApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()               
