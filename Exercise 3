@@ -1,0 +1,783 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog, filedialog
+import os
+
+# Change this to match your own Desktop path if needed
+STUDENT_FILE = r"C:\Users\HP\Desktop\studentMarks.txt"
+
+
+class StudentManagerApp:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("Student Marks Manager")
+        self.root.geometry("1000x600")
+        self.root.configure(bg="#F8FAFC")
+
+        self.students = []
+        self.sort_descending = False
+
+        self.load_students()
+        self.setup_styles()
+        self.build_layout()
+
+        self.show_all_students_view()
+        self.set_status("Ready.")
+
+    # ---------- File handling ---------- #
+
+    def resolve_student_file(self):
+        if os.path.exists(STUDENT_FILE):
+            return STUDENT_FILE
+
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            local_path = os.path.join(base_dir, "studentMarks.txt")
+            if os.path.exists(local_path):
+                return local_path
+        except NameError:
+            pass
+
+        messagebox.showwarning(
+            "Student file not found",
+            "Could not find 'studentMarks.txt'. Please select the file."
+        )
+        path = filedialog.askopenfilename(
+            title="Select studentMarks.txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        if not path:
+            return None
+        return path
+
+    def load_students(self):
+        self.students.clear()
+
+        path = self.resolve_student_file()
+        if not path:
+            return
+
+        self.current_file_path = path
+
+        try:
+            with open(path, "r") as f:
+                first_line = f.readline().strip()
+
+                try:
+                    num_students = int(first_line)
+                except ValueError:
+                    num_students = None
+                    f.seek(0)
+
+                if num_students is None:
+                    lines = f.readlines()
+                else:
+                    lines = [f.readline() for _ in range(num_students)]
+
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split(",")
+                    if len(parts) != 6:
+                        continue
+
+                    code, name, c1, c2, c3, exam = parts
+                    student = {
+                        "code": code.strip(),
+                        "name": name.strip(),
+                        "coursework1": int(c1),
+                        "coursework2": int(c2),
+                        "coursework3": int(c3),
+                        "exam": int(exam),
+                    }
+                    self.students.append(student)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not read file:\n{e}")
+
+    def save_students(self):
+        path = getattr(self, "current_file_path", None)
+        if not path:
+            messagebox.showerror("Error", "No file path set to save students.")
+            return
+
+        try:
+            with open(path, "w") as f:
+                f.write(str(len(self.students)) + "\n")
+                for s in self.students:
+                    line = (
+                        f"{s['code']},{s['name']},"
+                        f"{s['coursework1']},{s['coursework2']},"
+                        f"{s['coursework3']},{s['exam']}\n"
+                    )
+                    f.write(line)
+            self.set_status("Changes saved to file.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not save file:\n{e}")
+
+    # ---------- Calculations ---------- #
+
+    def total_coursework(self, student):
+        return student["coursework1"] + student["coursework2"] + student["coursework3"]
+
+    def overall_percentage(self, student):
+        cw_total = self.total_coursework(student)
+        overall = cw_total + student["exam"]  # max 160
+        return round((overall / 160) * 100, 2)
+
+    def grade_for_percentage(self, pct):
+        if pct >= 70:
+            return "A"
+        elif pct >= 60:
+            return "B"
+        elif pct >= 50:
+            return "C"
+        elif pct >= 40:
+            return "D"
+        return "F"
+
+    # ---------- UI setup ---------- #
+
+    def setup_styles(self):
+        style = ttk.Style()
+        style.theme_use("default")
+
+        style.configure(
+            "Sidebar.TButton",
+            font=("Segoe UI", 10),
+            padding=6,
+            relief="flat",
+            foreground="white",
+            background="#4F46E5"
+        )
+        style.map(
+            "Sidebar.TButton",
+            background=[("active", "#4338CA")]
+        )
+
+        style.configure(
+            "Heading.TLabel",
+            font=("Segoe UI", 18, "bold"),
+            foreground="#0F172A",
+            background="#F8FAFC"
+        )
+        style.configure(
+            "Subheading.TLabel",
+            font=("Segoe UI", 10),
+            foreground="#475569",
+            background="#F8FAFC"
+        )
+
+        style.configure(
+            "Treeview",
+            font=("Segoe UI", 9),
+            rowheight=24,
+            background="#F8FAFC",
+            fieldbackground="#F8FAFC"
+        )
+        style.configure(
+            "Treeview.Heading",
+            font=("Segoe UI", 9, "bold")
+        )
+
+    def build_layout(self):
+        self.sidebar = tk.Frame(self.root, bg="#4F46E5", width=220)
+        self.sidebar.pack(side="left", fill="y")
+
+        logo = tk.Label(
+            self.sidebar,
+            text="🎓",
+            font=("Segoe UI Emoji", 26),
+            fg="white",
+            bg="#4F46E5",
+            pady=10
+        )
+        logo.pack()
+
+        title = tk.Label(
+            self.sidebar,
+            text="Student Manager",
+            font=("Segoe UI", 12, "bold"),
+            fg="white",
+            bg="#4F46E5"
+        )
+        title.pack()
+
+        tagline = tk.Label(
+            self.sidebar,
+            text="Coursework & Exam Dashboard",
+            font=("Segoe UI", 9),
+            fg="#E0E7FF",
+            bg="#4F46E5"
+        )
+        tagline.pack(pady=(0, 20))
+
+        buttons = [
+            ("All records", self.show_all_students_view),
+            ("Find student", self.show_search_student_dialog),
+            ("Highest score", self.show_highest_student),
+            ("Lowest score", self.show_lowest_student),
+            ("Sort records", self.sort_records_dialog),
+            ("Add student", self.show_add_student_view),
+            ("Delete student", self.delete_student_dialog),
+            ("Update student", self.update_student_dialog),
+        ]
+
+        for text, cmd in buttons:
+            btn = ttk.Button(
+                self.sidebar,
+                text=text,
+                style="Sidebar.TButton",
+                command=cmd
+            )
+            btn.pack(fill="x", padx=15, pady=3)
+            btn.configure(cursor="hand2")
+
+        self.content = tk.Frame(self.root, bg="#F8FAFC")
+        self.content.pack(side="right", fill="both", expand=True)
+
+        self.status_var = tk.StringVar()
+        self.status_bar = tk.Label(
+            self.root,
+            textvariable=self.status_var,
+            anchor="w",
+            font=("Segoe UI", 9),
+            bg="#E2E8F0",
+            fg="#334155",
+            padx=10
+        )
+        self.status_bar.pack(side="bottom", fill="x")
+
+    def clear_content(self):
+        for widget in self.content.winfo_children():
+            widget.destroy()
+
+    def set_status(self, text):
+        self.status_var.set(text)
+
+    # ---------- Views ---------- #
+
+    def show_all_students_view(self):
+        self.clear_content()
+
+        header = ttk.Label(self.content, text="All Student Records", style="Heading.TLabel")
+        header.pack(anchor="w", padx=20, pady=(20, 0))
+
+        sub = ttk.Label(
+            self.content,
+            text="Overview of coursework, exam marks, overall percentage and grades.",
+            style="Subheading.TLabel"
+        )
+        sub.pack(anchor="w", padx=20, pady=(0, 10))
+
+        table_frame = tk.Frame(self.content, bg="#F8FAFC")
+        table_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        columns = ("code", "name", "cw_total", "exam", "pct", "grade")
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+
+        self.tree.heading("code", text="Code", command=lambda: self.sort_by_column("code"))
+        self.tree.heading("name", text="Name", command=lambda: self.sort_by_column("name"))
+        self.tree.heading("cw_total", text="Coursework (60)", command=lambda: self.sort_by_column("cw_total"))
+        self.tree.heading("exam", text="Exam (100)", command=lambda: self.sort_by_column("exam"))
+        self.tree.heading("pct", text="Overall %", command=lambda: self.sort_by_column("pct"))
+        self.tree.heading("grade", text="Grade", command=lambda: self.sort_by_column("grade"))
+
+        self.tree.column("code", width=80, anchor="center")
+        self.tree.column("name", width=220, anchor="w")
+        self.tree.column("cw_total", width=130, anchor="center")
+        self.tree.column("exam", width=100, anchor="center")
+        self.tree.column("pct", width=100, anchor="center")
+        self.tree.column("grade", width=80, anchor="center")
+
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=vsb.set)
+
+        self.tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        self.tree.tag_configure("row_odd", background="#EEF2FF")
+        self.tree.tag_configure("row_even", background="#FFFFFF")
+        self.tree.tag_configure("grade_A", foreground="#16A34A")
+        self.tree.tag_configure("grade_B", foreground="#22C55E")
+        self.tree.tag_configure("grade_C", foreground="#F59E0B")
+        self.tree.tag_configure("grade_D", foreground="#F97316")
+        self.tree.tag_configure("grade_F", foreground="#DC2626")
+
+        self.refresh_tree_data()
+        self.tree.bind("<Double-1>", self.open_detail_from_selection)
+
+        summary_text = self.build_class_summary()
+        summary_label = ttk.Label(
+            self.content,
+            text=summary_text,
+            style="Subheading.TLabel",
+            justify="left"
+        )
+        summary_label.pack(anchor="w", padx=20, pady=(0, 20))
+
+        self.set_status("Showing all student records.")
+
+    def refresh_tree_data(self):
+        if not hasattr(self, "tree"):
+            return
+
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+
+        for i, s in enumerate(self.students):
+            cw = self.total_coursework(s)
+            pct = self.overall_percentage(s)
+            grade = self.grade_for_percentage(pct)
+            row_tag = "row_odd" if i % 2 == 0 else "row_even"
+            grade_tag = f"grade_{grade}"
+            self.tree.insert(
+                "",
+                "end",
+                values=(s["code"], s["name"], cw, s["exam"], f"{pct}%", grade),
+                tags=(row_tag, grade_tag)
+            )
+
+    def build_class_summary(self):
+        if not self.students:
+            return "No students found."
+
+        total_pct = 0
+        for s in self.students:
+            total_pct += self.overall_percentage(s)
+
+        avg_pct = round(total_pct / len(self.students), 2)
+        return f"Students in class: {len(self.students)}   |   Average percentage: {avg_pct}%"
+
+    def open_detail_from_selection(self, event):
+        item = self.tree.selection()
+        if not item:
+            return
+        code = self.tree.item(item[0], "values")[0]
+        student = self.find_student_by_code(code)
+        if student:
+            self.show_student_detail_view(student)
+
+    def sort_by_column(self, column_key):
+        if not self.students:
+            return
+
+        key_func = None
+
+        if column_key == "code":
+            key_func = lambda s: int(s["code"])
+        elif column_key == "name":
+            key_func = lambda s: s["name"].lower()
+        elif column_key == "cw_total":
+            key_func = lambda s: self.total_coursework(s)
+        elif column_key == "exam":
+            key_func = lambda s: s["exam"]
+        elif column_key == "pct":
+            key_func = lambda s: self.overall_percentage(s)
+        elif column_key == "grade":
+            key_func = lambda s: self.grade_for_percentage(self.overall_percentage(s))
+
+        if key_func is None:
+            return
+
+        self.sort_descending = not getattr(self, "sort_descending", False)
+        self.students.sort(key=key_func, reverse=self.sort_descending)
+        self.refresh_tree_data()
+        order = "descending" if self.sort_descending else "ascending"
+        self.set_status(f"Sorted by {column_key} ({order}).")
+
+    def show_student_detail_view(self, student):
+        self.clear_content()
+
+        header = ttk.Label(
+            self.content,
+            text=f"{student['name']}  ({student['code']})",
+            style="Heading.TLabel"
+        )
+        header.pack(anchor="w", padx=20, pady=(20, 0))
+
+        sub = ttk.Label(
+            self.content,
+            text="Detailed overview of coursework, exam and grade.",
+            style="Subheading.TLabel"
+        )
+        sub.pack(anchor="w", padx=20, pady=(0, 10))
+
+        card = tk.Frame(
+            self.content,
+            bg="white",
+            padx=20,
+            pady=20,
+            highlightbackground="#E2E8F0",
+            highlightthickness=1
+        )
+        card.pack(padx=20, pady=20, fill="x")
+
+        cw1, cw2, cw3 = student["coursework1"], student["coursework2"], student["coursework3"]
+        cw_total = self.total_coursework(student)
+        pct = self.overall_percentage(student)
+        grade = self.grade_for_percentage(pct)
+
+        left = tk.Frame(card, bg="white")
+        left.pack(side="left", fill="x", expand=True)
+
+        def row(label, value):
+            r = tk.Frame(left, bg="white")
+            r.pack(anchor="w", pady=2)
+            tk.Label(r, text=label, font=("Segoe UI", 10, "bold"), bg="white").pack(side="left")
+            tk.Label(r, text=value, font=("Segoe UI", 10), bg="white", fg="#374151").pack(side="left", padx=(5, 0))
+
+        row("Coursework marks:", f"{cw1}, {cw2}, {cw3}")
+        row("Total coursework:", f"{cw_total} / 60")
+        row("Exam mark:", f"{student['exam']} / 100")
+        row("Overall percentage:", f"{pct} %")
+        row("Grade:", grade)
+
+        btn_row = tk.Frame(card, bg="white")
+        btn_row.pack(anchor="e", pady=(10, 0))
+
+        edit_btn = tk.Button(
+            btn_row,
+            text="Edit",
+            font=("Segoe UI", 9),
+            bg="#7C3AED",
+            fg="white",
+            activebackground="#6D28D9",
+            activeforeground="white",
+            relief="flat",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self.open_update_form(student)
+        )
+        edit_btn.pack(side="left", padx=5)
+
+        delete_btn = tk.Button(
+            btn_row,
+            text="Delete",
+            font=("Segoe UI", 9),
+            bg="#EF4444",
+            fg="white",
+            activebackground="#DC2626",
+            activeforeground="white",
+            relief="flat",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self.delete_student(student)
+        )
+        delete_btn.pack(side="left", padx=5)
+
+        back_btn = tk.Button(
+            self.content,
+            text="← Back to all records",
+            font=("Segoe UI", 9),
+            bg="#E5E7EB",
+            fg="#111827",
+            relief="flat",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+            command=self.show_all_students_view
+        )
+        back_btn.pack(anchor="w", padx=20, pady=(0, 10))
+
+        self.set_status(f"Showing details for {student['name']}.")
+
+    def show_add_student_view(self):
+        self.clear_content()
+
+        header = ttk.Label(self.content, text="Add New Student", style="Heading.TLabel")
+        header.pack(anchor="w", padx=20, pady=(20, 0))
+
+        sub = ttk.Label(
+            self.content,
+            text="Coursework marks are out of 20 each, exam is out of 100.",
+            style="Subheading.TLabel"
+        )
+        sub.pack(anchor="w", padx=20, pady=(0, 10))
+
+        form = tk.Frame(
+            self.content,
+            bg="#F8FAFC",
+            padx=20,
+            pady=20,
+            highlightbackground="#E2E8F0",
+            highlightthickness=1
+        )
+        form.pack(padx=20, pady=20, fill="x")
+
+        labels = [
+            ("Student code (1000–9999)", "code"),
+            ("Name", "name"),
+            ("Coursework 1", "coursework1"),
+            ("Coursework 2", "coursework2"),
+            ("Coursework 3", "coursework3"),
+            ("Exam mark", "exam"),
+        ]
+
+        entries = {}
+
+        for i, (label_text, key) in enumerate(labels):
+            tk.Label(form, text=label_text, font=("Segoe UI", 10), bg="#F8FAFC").grid(row=i, column=0, sticky="w", pady=4)
+            e = tk.Entry(form, font=("Segoe UI", 10))
+            e.grid(row=i, column=1, sticky="ew", pady=4, padx=(10, 0))
+            entries[key] = e
+
+        form.grid_columnconfigure(1, weight=1)
+
+        def submit():
+            try:
+                code = entries["code"].get().strip()
+                name = entries["name"].get().strip()
+                if not code or not name:
+                    raise ValueError("Code and name are required.")
+
+                if not (code.isdigit() and 1000 <= int(code) <= 9999):
+                    raise ValueError("Code must be a number between 1000 and 9999.")
+
+                c1 = int(entries["coursework1"].get())
+                c2 = int(entries["coursework2"].get())
+                c3 = int(entries["coursework3"].get())
+                exam = int(entries["exam"].get())
+
+                for m in (c1, c2, c3):
+                    if not (0 <= m <= 20):
+                        raise ValueError("Coursework marks must be between 0 and 20.")
+                if not (0 <= exam <= 100):
+                    raise ValueError("Exam mark must be between 0 and 100.")
+
+                new_student = {
+                    "code": code,
+                    "name": name,
+                    "coursework1": c1,
+                    "coursework2": c2,
+                    "coursework3": c3,
+                    "exam": exam,
+                }
+                self.students.append(new_student)
+                self.save_students()
+                self.show_all_students_view()
+                self.set_status(f"Added student {name} ({code}).")
+            except ValueError as e:
+                messagebox.showerror("Invalid input", str(e))
+
+        submit_btn = tk.Button(
+            self.content,
+            text="Save student",
+            font=("Segoe UI", 10, "bold"),
+            bg="#10B981",
+            fg="white",
+            activebackground="#059669",
+            activeforeground="white",
+            relief="flat",
+            padx=16,
+            pady=6,
+            cursor="hand2",
+            command=submit
+        )
+        submit_btn.pack(anchor="e", padx=20, pady=(0, 20))
+
+    # ---------- Dialog-based actions ---------- #
+
+    def show_search_student_dialog(self):
+        if not self.students:
+            messagebox.showinfo("Info", "No student records available.")
+            return
+        query = simpledialog.askstring("Find student", "Enter student code or full name:")
+        if not query:
+            return
+        student = self.find_student(query)
+        if not student:
+            messagebox.showerror("Not found", "No matching student found.")
+            return
+        self.show_student_detail_view(student)
+
+    def show_highest_student(self):
+        if not self.students:
+            messagebox.showinfo("Info", "No student records available.")
+            return
+        student = max(self.students, key=self.overall_percentage)
+        self.show_student_detail_view(student)
+
+    def show_lowest_student(self):
+        if not self.students:
+            messagebox.showinfo("Info", "No student records available.")
+            return
+        student = min(self.students, key=self.overall_percentage)
+        self.show_student_detail_view(student)
+
+    def sort_records_dialog(self):
+        if not self.students:
+            messagebox.showinfo("Info", "No student records available.")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Sort records")
+        win.configure(bg="#F9FAFB")
+        win.resizable(False, False)
+
+        tk.Label(
+            win,
+            text="Sort students by overall percentage:",
+            font=("Segoe UI", 10, "bold"),
+            bg="#F9FAFB"
+        ).pack(padx=20, pady=(15, 5))
+
+        sort_var = tk.StringVar(value="asc")
+        tk.Radiobutton(win, text="Ascending", variable=sort_var, value="asc", bg="#F9FAFB").pack(anchor="w", padx=30)
+        tk.Radiobutton(win, text="Descending", variable=sort_var, value="desc", bg="#F9FAFB").pack(anchor="w", padx=30)
+
+        def apply_sort():
+            reverse = sort_var.get() == "desc"
+            self.students.sort(key=self.overall_percentage, reverse=reverse)
+            self.save_students()
+            if hasattr(self, "tree"):
+                self.refresh_tree_data()
+            self.set_status("Records sorted.")
+            win.destroy()
+
+        tk.Button(
+            win,
+            text="Sort",
+            command=apply_sort,
+            padx=10,
+            pady=4
+        ).pack(pady=15)
+
+    def delete_student_dialog(self):
+        if not self.students:
+            messagebox.showinfo("Info", "No student records available.")
+            return
+        query = simpledialog.askstring("Delete student", "Enter student code or full name:")
+        if not query:
+            return
+        student = self.find_student(query)
+        if not student:
+            messagebox.showerror("Not found", "No matching student.")
+            return
+        self.delete_student(student)
+
+    def update_student_dialog(self):
+        if not self.students:
+            messagebox.showinfo("Info", "No student records available.")
+            return
+        query = simpledialog.askstring("Update student", "Enter student code or full name:")
+        if not query:
+            return
+        student = self.find_student(query)
+        if not student:
+            messagebox.showerror("Not found", "No matching student.")
+            return
+        self.open_update_form(student)
+
+    # ---------- Helper actions ---------- #
+
+    def find_student(self, query):
+        query = query.strip()
+        for s in self.students:
+            if s["code"] == query:
+                return s
+
+        for s in self.students:
+            if s["name"].lower() == query.lower():
+                return s
+
+        lowered = query.lower()
+        matches = [s for s in self.students if lowered in s["name"].lower()]
+        if len(matches) == 1:
+            return matches[0]
+        elif len(matches) > 1:
+            names = "\n".join(f"- {s['name']} ({s['code']})" for s in matches)
+            messagebox.showinfo("Multiple matches", f"More than one student matched:\n{names}")
+        return None
+
+    def find_student_by_code(self, code):
+        for s in self.students:
+            if s["code"] == code:
+                return s
+        return None
+
+    def delete_student(self, student):
+        confirm = messagebox.askyesno(
+            "Confirm delete",
+            f"Delete {student['name']} ({student['code']})?"
+        )
+        if not confirm:
+            return
+        self.students.remove(student)
+        self.save_students()
+        self.show_all_students_view()
+        self.set_status(f"Deleted student {student['name']}.")
+
+    def open_update_form(self, student):
+        win = tk.Toplevel(self.root)
+        win.title(f"Update {student['name']}")
+        win.configure(bg="#F9FAFB")
+
+        tk.Label(
+            win,
+            text=f"Update marks for {student['name']} ({student['code']})",
+            font=("Segoe UI", 10, "bold"),
+            bg="#F9FAFB"
+        ).grid(row=0, column=0, columnspan=2, padx=20, pady=(15, 10), sticky="w")
+
+        fields = ["coursework1", "coursework2", "coursework3", "exam"]
+        entries = {}
+
+        for i, field in enumerate(fields, start=1):
+            label = field.capitalize() if field != "exam" else "Exam"
+            tk.Label(win, text=f"{label}:", bg="#F9FAFB", font=("Segoe UI", 10)).grid(
+                row=i, column=0, padx=20, pady=4, sticky="w"
+            )
+            e = tk.Entry(win, font=("Segoe UI", 10))
+            e.insert(0, str(student[field]))
+            e.grid(row=i, column=1, padx=20, pady=4, sticky="ew")
+            entries[field] = e
+
+        win.grid_columnconfigure(1, weight=1)
+
+        def save_changes():
+            try:
+                c1 = int(entries["coursework1"].get())
+                c2 = int(entries["coursework2"].get())
+                c3 = int(entries["coursework3"].get())
+                exam = int(entries["exam"].get())
+
+                for m in (c1, c2, c3):
+                    if not (0 <= m <= 20):
+                        raise ValueError("Coursework marks must be between 0 and 20.")
+                if not (0 <= exam <= 100):
+                    raise ValueError("Exam mark must be between 0 and 100.")
+
+                student["coursework1"] = c1
+                student["coursework2"] = c2
+                student["coursework3"] = c3
+                student["exam"] = exam
+
+                self.save_students()
+                if hasattr(self, "tree"):
+                    self.refresh_tree_data()
+                self.set_status(f"Updated marks for {student['name']}.")
+                win.destroy()
+            except ValueError as e:
+                messagebox.showerror("Invalid input", str(e))
+
+        tk.Button(
+            win,
+            text="Save changes",
+            command=save_changes,
+            padx=10,
+            pady=4
+        ).grid(row=len(fields) + 1, column=0, columnspan=2, pady=15)
+
+
+def main():
+    root = tk.Tk()
+    app = StudentManagerApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+
+
