@@ -1,6 +1,4 @@
-# Tkinter Maths Quiz — final version used for the assignment
-# 10 questions per round, with 1/2/4 digit difficulty and random +/-
-# Two attempts per question (10 points first try, 5 on second), plus final score and grade with replay option.
+# maths_quiz_gui.py — Tkinter Maths Quiz (Final Version with natural comments)
 
 import os
 import random
@@ -8,16 +6,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter import font as tkfont
 
-# Optional: Pillow support so we can use a JPG background if it's available
+# Pillow lets us use JPG/JFIF backgrounds. The app still works without it.
 try:
     from PIL import Image, ImageTk
     PIL_OK = True
 except Exception:
     PIL_OK = False
 
-# ----------------------
-# Basic window size and color theme
-# ----------------------
+# Window size and main colour palette
 WINDOW_SIZE = (1000, 600)
 
 BG_CANDIDATES = [
@@ -43,7 +39,7 @@ COLORS = {
 
 
 def load_bg(size):
-    """Try to load a background image and resize it to the window."""
+    """Try to load the grid background image. If anything fails, just skip it."""
     path = next((p for p in BG_CANDIDATES if os.path.exists(p)), None)
     if not path:
         return None
@@ -57,72 +53,78 @@ def load_bg(size):
 class MathsQuizApp(tk.Tk):
     def __init__(self):
         super().__init__()
+
+        # Slight scaling tweak so text looks less jagged on Windows
+        try:
+            self.tk.call("tk", "scaling", 1.15)
+        except Exception:
+            pass
+
         self.title("Maths Quiz — Clean & Centered")
         self.geometry(f"{WINDOW_SIZE[0]}x{WINDOW_SIZE[1]}")
         self.resizable(False, False)
         self.configure(bg=COLORS["bg"])
 
-        # Keeps track of the current quiz state
+        # Basic quiz state
         self.digits = 1
         self.q_index = 0
         self.score = 0
         self.first_try = True
         self.a = 0
         self.b = 0
-        self.op = '+'
+        self.op = "+"
 
-        # Main frame where all different screens are shown
+        # Main container frame
         self.stage = tk.Frame(self, bg=COLORS["bg"])
         self.stage.pack(expand=True, fill="both")
 
-        # Preload background image once so we can reuse it
+        # Background image is optional
         self.bg_image = load_bg(WINDOW_SIZE)
 
-        # Set up ttk styles for buttons and other widgets
         self._setup_styles()
-
-        # Keyboard shortcut: Escape goes back to the menu
-        self.bind("<Escape>", lambda e: self.displayMenu())
-
-        # Start on the home screen
         self.displayHome()
 
-    # ----------------------
-    # Helper functions
-    # ----------------------
+    # ---------- styling and small helpers ----------
+
     def _setup_styles(self):
         style = ttk.Style(self)
-        try:
-            style.theme_use("clam")
-        except Exception:
-            pass
 
+        # Main blue buttons
         style.configure(
             "Primary.TButton",
-            padding=(16, 10),
-            font=("Segoe UI", 11, "bold"),
-            foreground="#051a1e",
+            padding=(14, 9),
+            font=("Segoe UI", 11),
+            foreground="#061019",
             background=COLORS["accent"],
             borderwidth=0,
         )
         style.map(
             "Primary.TButton",
             background=[("active", COLORS["accent_hi"]), ("pressed", COLORS["accent_lo"])],
-            relief=[("pressed", "flat")]
         )
 
+        # Slightly bigger button used for “Submit”
+        style.configure(
+            "Action.TButton",
+            padding=(18, 12),
+            font=("Segoe UI", 12),
+            foreground="#000000",
+            background=COLORS["accent"],
+            borderwidth=0,
+        )
+        style.map(
+            "Action.TButton",
+            background=[("active", COLORS["accent_hi"]), ("pressed", COLORS["accent_lo"])],
+        )
+
+        # Flat outlined button for back/secondary actions
         style.configure(
             "Ghost.TButton",
             padding=(10, 6),
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 10),
             foreground=COLORS["accent_hi"],
             background=COLORS["panel"],
-            borderwidth=1
-        )
-        style.map(
-            "Ghost.TButton",
-            background=[("active", COLORS["hud"]), ("pressed", "#0d1130")],
-            foreground=[("active", COLORS["accent"]), ("pressed", COLORS["accent_lo"])],
+            borderwidth=1,
         )
 
         style.configure(
@@ -132,175 +134,154 @@ class MathsQuizApp(tk.Tk):
         )
 
     def _clear(self):
-        # Remove old widgets and keybindings before drawing the next screen
-        self.unbind("<Return>")
+        """Reset the stage before drawing a new screen."""
+        # Remove key bindings that only make sense on the previous screen
         self.unbind("1")
         self.unbind("2")
         self.unbind("3")
+        self.unbind("<Return>")
+
         for w in self.stage.winfo_children():
             w.destroy()
 
     def _paint_bg(self):
-        # Either show the image background or fall back to a solid color
+        """Fill the window with the grid image if we have one."""
         if self.bg_image:
             tk.Label(self.stage, image=self.bg_image, borderwidth=0).place(
                 x=0, y=0, relwidth=1, relheight=1
             )
-        else:
-            self.stage.configure(bg=COLORS["bg"])
 
-    def _center_frame(self, y_rel=0.5, parent=None, bg=None):
+    def _center_frame(self, y_rel=0.5, parent=None):
+        """Create a fixed-size card anchored in the middle of the window."""
         host = parent or self.stage
-        frame = tk.Frame(host, bg=(bg or host["bg"]))
-        frame.place(relx=0.5, rely=y_rel, anchor="center")
-        return frame
+        f = tk.Frame(host, bg=COLORS["panel"])
+        f.place(relx=0.5, rely=y_rel, anchor="center")
+        return f
 
-    def _choose_font(self):
-        families = set(tkfont.families())
-        for f in ("Orbitron", "Audiowide", "Oxanium", "Neuropol"):
-            if f in families:
-                return f
-        return "Segoe UI"
-
-    def _title(self, parent, text, size=48, fg=COLORS["pink"]):
-        fam = self._choose_font()
+    def _title(self, parent, text, size=40, fg=COLORS["pink"]):
+        """Big heading helper so titles stay consistent."""
         lbl = tk.Label(
             parent,
             text=text,
-            font=(fam, size, "bold"),
+            font=("Segoe UI", size, "bold"),
             fg=fg,
-            bg=parent["bg"],
-            anchor="center",
+            bg=COLORS["panel"],
         )
-        lbl.pack(pady=(8, 10))
+        lbl.pack(pady=(8, 14))
         return lbl
 
-    def _glass_card(self, y_rel=0.5, width=840, height=400, pad=28):
-        # Simple framed "card" in the middle of the screen for content
-        container = self._center_frame(y_rel=y_rel, parent=self.stage, bg=self.stage["bg"])
-        canvas = tk.Canvas(
-            container,
-            width=width,
-            height=height,
-            bg=self.stage["bg"],
-            highlightthickness=0,
-        )
-        canvas.pack()
-        canvas.create_rectangle(
-            2, 2, width - 2, height - 2, outline=COLORS["purple"], width=2
-        )
-        inner = tk.Frame(container, bg=COLORS["panel"])
-        inner.place(x=pad, y=pad, width=width - 2 * pad, height=height - 2 * pad)
-        return inner
+    # ---------- main screens ----------
 
-    def _label(self, parent, text, size=16, fg=COLORS["text"], bold=False, wrap=None):
-        fam = self._choose_font()
-        lbl = tk.Label(
-            parent,
-            text=text,
-            font=(fam, size, "bold" if bold else "normal"),
-            fg=fg,
-            bg=parent["bg"],
-            anchor="center",
-            justify="center",
-            wraplength=wrap,
-        )
-        lbl.pack()
-        return lbl
-
-    # ----------------------
-    # Screens (home, level select, question view, results)
-    # ----------------------
     def displayHome(self):
+        """Landing page with simple CTA."""
         self._clear()
         self._paint_bg()
 
-        card = self._glass_card(y_rel=0.50, width=840, height=360, pad=28)
-        self._title(card, "MATHS QUIZ", size=44)
-        self._label(
+        card = self._center_frame(0.50)
+        card.config(width=750, height=300)
+        card.pack_propagate(False)
+
+        self._title(card, "MATHS QUIZ", size=42)
+        tk.Label(
             card,
-            "Sharpen your skills with neon-powered addition & subtraction.",
-            size=18,
+            text="Sharpen your skills with neon-powered addition & subtraction.",
+            font=("Segoe UI", 15),
             fg=COLORS["muted"],
-            bold=True,
-            wrap=760,
-        )
+            bg=COLORS["panel"],
+            wraplength=700,
+        ).pack(pady=14)
+
         ttk.Button(
             card,
             text="Start Quiz",
             style="Primary.TButton",
             command=self.displayMenu,
-        ).pack(pady=18, ipadx=14)
+        ).pack(pady=20)
 
     def displayMenu(self):
+        """Difficulty selection screen + 1/2/3 shortcuts."""
         self._clear()
         self._paint_bg()
 
-        card = self._glass_card(y_rel=0.50, width=840, height=460, pad=28)
-        self._title(card, "DIFFICULTY LEVEL", size=36, fg=COLORS["pink"])
-        self._label(
+        card = self._center_frame(0.50)
+        card.config(width=750, height=430)
+        card.pack_propagate(False)
+
+        self._title(card, "DIFFICULTY LEVEL", size=36)
+        tk.Label(
             card,
-            "1) Easy = 1-digit   •   2) Moderate = 2-digit   •   3) Advanced = 4-digit",
-            size=14,
+            text="1) Easy = 1-digit   •   2) Moderate = 2-digit   •   3) Advanced = 4-digit",
+            font=("Segoe UI", 13),
             fg=COLORS["muted"],
-            wrap=760,
-        )
+            bg=COLORS["panel"],
+            wraplength=700,
+        ).pack(pady=8)
 
         btns = tk.Frame(card, bg=COLORS["panel"])
-        btns.pack(pady=20)
+        btns.pack(pady=18)
 
-        def make_btn(text, cmd, style="Primary.TButton"):
-            b = ttk.Button(btns, text=text, style=style, command=cmd)
-            b.pack(pady=6, ipadx=14, ipady=2)
-            return b
+        def add_btn(label, cmd, style="Primary.TButton"):
+            ttk.Button(btns, text=label, style=style, command=cmd).pack(
+                pady=6, ipadx=14, ipady=3
+            )
 
-        make_btn("1. Easy", lambda: self._start_quiz(1))
-        make_btn("2. Moderate", lambda: self._start_quiz(2))
-        make_btn("3. Advanced", lambda: self._start_quiz(4))
-        make_btn("Back to Home", self.displayHome, style="Ghost.TButton")
+        add_btn("1. Easy", lambda: self._start_quiz(1))
+        add_btn("2. Moderate", lambda: self._start_quiz(2))
+        add_btn("3. Advanced", lambda: self._start_quiz(4))
+        add_btn("Back to Home", self.displayHome, style="Ghost.TButton")
 
+        # Number keys act as shortcuts only on this menu
         self.bind("1", lambda e: self._start_quiz(1))
         self.bind("2", lambda e: self._start_quiz(2))
         self.bind("3", lambda e: self._start_quiz(4))
 
     def displayProblem(self):
+        """Show the current arithmetic problem and accept an answer."""
         self._clear()
         self._paint_bg()
 
-        # Small bar at the top showing question number and score
+        # Small HUD with question count and score
         hud = tk.Frame(self.stage, bg=COLORS["hud"])
         hud.place(relx=0.5, rely=0.12, anchor="center")
+
         tk.Label(
             hud,
             text=f"Question {self.q_index + 1} / 10",
             fg=COLORS["muted"],
             bg=COLORS["hud"],
-            font=(self._choose_font(), 11, "bold"),
+            font=("Segoe UI", 11, "bold"),
         ).pack(side="left", padx=10)
+
         self._hud_score = tk.Label(
             hud,
             text=f"Score: {self.score}",
             fg=COLORS["accent"],
             bg=COLORS["hud"],
-            font=(self._choose_font(), 11, "bold"),
+            font=("Segoe UI", 11, "bold"),
         )
         self._hud_score.pack(side="left", padx=10)
 
-        card = self._glass_card(y_rel=0.60, width=840, height=420, pad=28)
-        self._title(card, "SOLVE", size=34)
+        card = self._center_frame(0.60)
+        card.config(width=750, height=430)
+        card.pack_propagate(False)
+
+        self._title(card, "SOLVE", size=32)
+
         tk.Label(
             card,
             text=f"{self.a} {self.op} {self.b} =",
-            font=("Consolas", 56, "bold"),
+            font=("Consolas", 52, "bold"),
             fg=COLORS["text"],
             bg=COLORS["panel"],
-        ).pack(pady=(6, 2))
+        ).pack(pady=(4, 8))
 
+        # Input field + live echo label
         ans_var = tk.StringVar()
+
         entry = tk.Entry(
             card,
             width=12,
-            font=("Consolas", 24),
+            font=("Consolas", 26),
             bg="#111633",
             fg=COLORS["text"],
             insertbackground=COLORS["accent"],
@@ -308,42 +289,46 @@ class MathsQuizApp(tk.Tk):
             textvariable=ans_var,
             justify="center",
         )
-        entry.pack(pady=(8, 4))
+        entry.pack()
         entry.focus_set()
 
         echo = tk.Label(
             card,
             text="Your answer: —",
-            font=(self._choose_font(), 12),
+            font=("Segoe UI", 11),
             fg=COLORS["muted"],
             bg=COLORS["panel"],
         )
-        echo.pack(pady=(0, 8))
+        echo.pack(pady=8)
 
         def update_echo(*_):
             txt = ans_var.get().strip()
             echo.config(text=f"Your answer: {txt if txt else '—'}")
 
         ans_var.trace_add("write", update_echo)
+
         fb = tk.Label(
             card,
             text="",
-            font=(self._choose_font(), 12),
+            font=("Segoe UI", 11),
             fg=COLORS["muted"],
             bg=COLORS["panel"],
         )
-        fb.pack(pady=(0, 8))
+        fb.pack(pady=6)
 
-        correct_value = self.a + self.b if self.op == '+' else self.a - self.b
+        correct_value = self.a + self.b if self.op == "+" else self.a - self.b
 
         def submit():
+            """Handle one submission attempt for this question."""
             txt = ans_var.get().strip()
             try:
                 user = int(txt)
             except ValueError:
                 fb.config(text="Please enter a number.")
                 return
+
             if self.isCorrect(user):
+                # First try is worth more than second try
                 self.score += 10 if self.first_try else 5
                 self._hud_score.config(text=f"Score: {self.score}")
                 self.after(150, self._next_or_finish)
@@ -354,56 +339,73 @@ class MathsQuizApp(tk.Tk):
                     entry.delete(0, tk.END)
                 else:
                     fb.config(text=f"Answer: {correct_value}", fg=COLORS["warn"])
-                    self.after(300, self._next_or_finish)
+                    self.after(250, self._next_or_finish)
 
         ttk.Button(
             card,
             text="Submit",
-            style="Primary.TButton",
+            style="Action.TButton",
             command=submit,
-        ).pack(pady=10, ipadx=16)
+        ).pack(pady=12, ipadx=12)
+
+        # Enter key submits the answer
         self.bind("<Return>", lambda e: submit())
 
     def displayResults(self):
+        """End-of-quiz screen with grade and replay option."""
         self._clear()
         self._paint_bg()
 
-        card = self._glass_card(y_rel=0.50, width=840, height=360, pad=28)
-        self._title(card, "RESULTS", size=40)
-        self._label(card, f"Final Score: {self.score} / 100", size=22, bold=True)
-        self._label(
+        card = self._center_frame(0.50)
+        card.config(width=750, height=350)
+        card.pack_propagate(False)
+
+        self._title(card, "RESULTS", size=38)
+
+        tk.Label(
             card,
-            f"Rank: {self._grade(self.score)}",
-            size=16,
+            text=f"Final Score: {self.score} / 100",
+            font=("Segoe UI", 20, "bold"),
+            fg=COLORS["text"],
+            bg=COLORS["panel"],
+        ).pack(pady=6)
+
+        tk.Label(
+            card,
+            text=f"Rank: {self._grade(self.score)}",
+            font=("Segoe UI", 15, "bold"),
             fg=COLORS["muted"],
-            bold=True,
-        )
+            bg=COLORS["panel"],
+        ).pack(pady=6)
 
         btns = tk.Frame(card, bg=COLORS["panel"])
-        btns.pack(pady=12)
+        btns.pack(pady=14)
+
         ttk.Button(
             btns,
             text="Play Again",
             style="Primary.TButton",
             command=self.displayMenu,
         ).pack(pady=6, ipadx=14)
+
         ttk.Button(
             btns,
             text="Quit",
             style="Ghost.TButton",
             command=self.destroy,
-        ).pack(pady=2, ipadx=18)
+        ).pack(pady=6, ipadx=14)
 
-        self.after(400, self._prompt_replay)
+        # Soft nudge to play again
+        self.after(300, self._prompt_replay)
 
-    # ----------------------
-    # Game flow (start, next question, finish)
-    # ----------------------
+    # ---------- quiz flow ----------
+
     def _prompt_replay(self):
-        if messagebox.askyesno("Play again?", "Would you like to play another round?"):
+        if messagebox.askyesno("Play again?", "Would you like another round?"):
             self.displayMenu()
 
     def _start_quiz(self, digits):
+        """Initialise a new 10-question round for the chosen difficulty."""
         self.digits = digits
         self.q_index = 0
         self.score = 0
@@ -412,40 +414,47 @@ class MathsQuizApp(tk.Tk):
         self.displayProblem()
 
     def _new_problem(self):
+        """Pick two numbers and an operator based on difficulty."""
         self.a = self.randomInt(self.digits)
         self.b = self.randomInt(self.digits)
         self.op = self.decideOperation()
 
     def _next_or_finish(self):
+        """Move to the next question or show results if we reached 10."""
         self.q_index += 1
         self.first_try = True
+
         if self.q_index >= 10:
             self.displayResults()
         else:
             self._new_problem()
             self.displayProblem()
 
-    # ----------------------
-    # Core quiz logic (numbers, operator choice, correctness check, grade)
-    # ----------------------
+    # ---------- core logic required by the brief ----------
+
     def randomInt(self, digits):
+        """Return a random integer, range depends on the difficulty setting."""
         if digits == 1:
             return random.randint(0, 9)
         if digits == 2:
             return random.randint(10, 99)
         if digits == 4:
             return random.randint(1000, 9999)
-        return random.randint(0, 9)
+        # Fallback, should never really be hit
+        return 0
 
     def decideOperation(self):
-        return random.choice(['+', '-'])
+        """Randomly choose between addition and subtraction."""
+        return random.choice(["+", "-"])
 
     def isCorrect(self, user_answer):
-        correct = self.a + self.b if self.op == '+' else self.a - self.b
+        """Compare user’s answer to the correct result."""
+        correct = self.a + self.b if self.op == "+" else self.a - self.b
         return user_answer == correct
 
     @staticmethod
     def _grade(score):
+        """Simple letter grade mapping based on final score."""
         if score >= 90:
             return "A+"
         if score >= 80:
