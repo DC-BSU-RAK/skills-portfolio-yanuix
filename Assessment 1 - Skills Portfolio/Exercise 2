@@ -34,9 +34,10 @@ class JokeApp:
 
         self.root.configure(bg=self.bg_outer)
 
-        # Base paths so the jokes file can live either beside the script or in /resources
+        # Base paths so the jokes file can live either beside the script, in /resources, or on Desktop
         self.base = Path(__file__).parent
         self.resources = self.base / "resources"
+        self.desktop = Path.home() / "Desktop"
 
         # Load jokes once when the app starts
         self.jokes = self._load_jokes()
@@ -54,10 +55,14 @@ class JokeApp:
         This makes the program less fragile if the folder structure changes a bit.
         """
         candidates = [
+            # with space
             self.resources / "random jokes.txt",
             self.base / "random jokes.txt",
+            self.desktop / "random jokes.txt",
+            # without space
             self.resources / "randomJokes.txt",
             self.base / "randomJokes.txt",
+            self.desktop / "randomJokes.txt",
         ]
 
         for path in candidates:
@@ -73,7 +78,11 @@ class JokeApp:
         # If nothing was found, we warn the user once and return an empty list
         messagebox.showwarning(
             "Missing File",
-            "Could not find 'random jokes.txt'."
+            "Could not find 'random jokes.txt' or 'randomJokes.txt'.\n"
+            "Place the file either:\n"
+            "- in the same folder as this Python file, or\n"
+            "- in a 'resources' folder next to it, or\n"
+            "- directly on your Desktop."
         )
         return []
 
@@ -378,4 +387,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()               
+    main()
